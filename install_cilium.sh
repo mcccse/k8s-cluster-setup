@@ -25,6 +25,22 @@ if [[ -z "${CONTEXT}" ]]; then
   exit 1
 fi
 
+# ============================================================
+# Resolve K8S_SERVICE_HOST and K8S_SERVICE_PORT from kubeconfig
+# unless already set by the caller.
+# ============================================================
+
+_server=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)
+
+K8S_SERVICE_HOST="${K8S_SERVICE_HOST:-$(echo "${_server}" | sed 's|https://||' | cut -d: -f1)}"
+K8S_SERVICE_PORT="${K8S_SERVICE_PORT:-$(echo "${_server}" | sed 's|.*:||')}"
+
+if [[ -z "${K8S_SERVICE_HOST}" || -z "${K8S_SERVICE_PORT}" ]]; then
+  echo "❌ Kunde inte bestämma K8S_SERVICE_HOST/PORT."
+  echo "   Sätt dem explicit eller se till att KUBECONFIG är korrekt konfigurerat."
+  exit 1
+fi
+
 echo "🔧 Configuration:"
 echo "   Context:          ${CONTEXT}"
 echo "   Cilium CLI:       $(cilium version --client 2>/dev/null | head -1)"
