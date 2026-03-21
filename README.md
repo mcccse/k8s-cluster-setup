@@ -1,48 +1,15 @@
-# Talos cluster on Hetzner med Cluster API
+# Talos cluster på Hetzner med Cluster API
 
-<!--toc:start-->
 ## Innehållsförteckning
 
-- [Talos cluster on Hetzner med Cluster API](#talos-cluster-on-hetzner-med-cluster-api)
-  - [Innehållsförteckning](#innehållsförteckning)
-  - [Arkitekturöversikt](#arkitekturöversikt)
-  - [Förutsättningar](#förutsättningar)
-    - [Konton och nycklar](#konton-och-nycklar)
-    - [Miljövariabler](#miljövariabler)
-    - [Verktyg som behövs](#verktyg-som-behövs)
-  - [Engångsinställningar](#engångsinställningar)
-    - [Skapa Talos-snapshot på Hetzner](#skapa-talos-snapshot-på-hetzner)
-  - [Skapa kluster](#skapa-kluster)
-    - [1. Skapa lokalt management-kluster](#1-skapa-lokalt-management-kluster)
-    - [2. Initiera Cluster API](#2-initiera-cluster-api)
-    - [3. Skapa Hetzner credentials-secret](#3-skapa-hetzner-credentials-secret)
-    - [4. Generera Talos-konfiguration](#4-generera-talos-konfiguration)
-    - [5. Skapa Talos-konfigurationssecrets](#5-skapa-talos-konfigurationssecrets)
-    - [6. Skapa klustret](#6-skapa-klustret)
-    - [7. Uppdatera DNS](#7-uppdatera-dns)
-    - [8. Hämta kubeconfig](#8-hämta-kubeconfig)
-    - [9. Installera Cilium CNI](#9-installera-cilium-cni)
-  - [Daglig drift](#daglig-drift)
-    - [Uppgradera Kubernetes-versionen](#uppgradera-kubernetes-versionen)
-    - [Uppgradera Cluster API-providers](#uppgradera-cluster-api-providers)
-    - [Rotera Talos-certifikat](#rotera-talos-certifikat)
-    - [Ta bort klustret](#ta-bort-klustret)
-  - [Felsökning och återställning](#felsökning-och-återställning)
-    - [Vanliga felsökningskommandon](#vanliga-felsökningskommandon)
-    - [Återskapa management-klustret](#återskapa-management-klustret)
-    - [Nyttiga kommandon (snabbreferens)](#nyttiga-kommandon-snabbreferens)
-  - [Skala klustret](#skala-klustret)
-    - [Skala control plane](#skala-control-plane)
-    - [Skala workers (befintlig pool)](#skala-workers-befintlig-pool)
-    - [Lägga till en nodpool med annan hårdvara](#lägga-till-en-nodpool-med-annan-hårdvara)
-      - [**Steg 1: Generera manifest utan att applicera**](#steg-1-generera-manifest-utan-att-applicera)
-      - [**Steg 2: Kopiera ut worker-blocken ur det genererade manifestet**](#steg-2-kopiera-ut-worker-blocken-ur-det-genererade-manifestet)
-      - [**Steg 3: Byt namn och lägg till labels**](#steg-3-byt-namn-och-lägg-till-labels)
-      - [**Steg 4: Applicera**](#steg-4-applicera)
-    - [Styra workloads till en specifik pool](#styra-workloads-till-en-specifik-pool)
-    - [Ta bort en nodpool](#ta-bort-en-nodpool)
-  - [Anteckningar](#anteckningar)
-<!--toc:end-->
+- [Arkitekturöversikt](#arkitekturöversikt)
+- [Förutsättningar](#förutsättningar)
+- [Engångsinställningar](#engångsinställningar)
+- [Skapa kluster](#skapa-kluster)
+- [Daglig drift](#daglig-drift)
+- [Felsökning och återställning](#felsökning-och-återställning)
+- [Skala klustret](#skala-klustret)
+- [Anteckningar](#anteckningar)
 
 ---
 
@@ -51,13 +18,13 @@
 Det här upplägget använder **Cluster API (CAPI)** för att provisionera ett
 Kubernetes-kluster på Hetzner Cloud.
 
-```
+```txt
 ┌─────────────────────────────────┐       ┌────────────────────────────────────┐
 │       Lokalt (din dator)        │       │         Hetzner Cloud              │
 │                                 │       │                                    │
 │  ┌──────────────────────────┐   │       │  ┌──────────────────────────────┐  │
 │  │  Management-kluster      │   │       │  │  Workload-kluster (Talos)    │  │
-│  │  (kind)                  │──────────▶   │                              │  │
+│  │  (kind)                  │───────────▶  │                              │  │
 │  │                          │   │       │  │  control-plane nodes         │  │
 │  │  - Cluster API           │   │       │  │  worker nodes                │  │
 │  │  - Hetzner provider      │   │       │  │  load balancer               │  │
@@ -69,15 +36,13 @@ Kubernetes-kluster på Hetzner Cloud.
 └─────────────────────────────────┘       └────────────────────────────────────┘
 ```
 
-**Management-klustret** är ett tillfälligt lokalt kluster (kind)
-vars enda uppgift är att köra Cluster API-kontrollerna som skapar och sköter
-workload-klustret på Hetzner.
-Det körs bara på din dator och behöver inte vara igång konstant,
-men utan det kan du
-inte göra ändringar i kluster-resurser via CAPI.
+**Management-klustret** är ett tillfälligt lokalt kluster (kind) vars enda uppgift
+är att köra Cluster API-kontrollerna som skapar och sköter workload-klustret på
+Hetzner. Det körs bara på din dator och behöver inte vara igång konstant, men utan
+det kan du inte göra ändringar i kluster-resurser via CAPI.
 
-**Workload-klustret** är det riktiga Talos-klustret på Hetzner
-som dina applikationer kör på.
+**Workload-klustret** är det riktiga Talos-klustret på Hetzner som dina
+applikationer kör på.
 
 ---
 
@@ -94,7 +59,6 @@ som dina applikationer kör på.
 Exportera dessa innan du kör något:
 
 ```bash
-export CLUSTER_TOPOLOGY=true
 export HCLOUD_TOKEN="<din hetzner-token>"
 export SSH_KEY_NAME="<namn på din uppladdade ssh-nyckel>"
 export CLUSTER_NAME="capi-hetzner"
@@ -108,8 +72,7 @@ export DNS_API_NAME="kubeapi"
 | --- | --- |
 | `clusterctl` | Hanterar Cluster API |
 | `cilium` | Installerar/verifierar Cilium CNI |
-| `curl` | Commando Line http requests |
-| `docker` | Container RunTime på din lokala dator |
+| `docker` | Container runtime på din lokala dator |
 | `kind` | Skapar management-klustret lokalt |
 | `kubectl` | Kommunicerar med Kubernetes |
 | `helm` | Installerar Helm-charts |
@@ -181,71 +144,50 @@ kubectl create secret generic hetzner \
   -n default \
   --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl patch secret hetzner -p '{"metadata":{"labels":{"clusterctl.cluster.x-k8s.io/move":""}}}'
+kubectl patch secret hetzner \
+  -p '{"metadata":{"labels":{"clusterctl.cluster.x-k8s.io/move":""}}}'
 ```
 
 ---
 
-### 4. Generera Talos-konfiguration
+### 4. Skapa workload-klustret
+
+CAPI genererar automatiskt alla Talos-secrets och certifikat vid bootstrap.
+Du behöver inte generera någon konfiguration manuellt.
+
+Visa tillgängliga variabler:
 
 ```bash
-mkdir -p talos-config
-
-talosctl gen config "${CLUSTER_NAME}" \
-  https://"${DNS_API_NAME}"."${CLUSTER_NAME}"."${DNS_ZONE}":6443 \
-  --output-dir talos-config/"${CLUSTER_NAME}" \
-  --with-docs=false \
-  --with-examples=false
+./create-cluster.sh -h
 ```
 
-Detta genererar tre filer i nuvarande katalog:
-
-| Fil | Syfte |
-| --- | --- |
-| `controlplane.yaml` | Konfiguration för control-plane-noder |
-| `worker.yaml` | Konfiguration för worker-noder |
-| `talosconfig` | Klientkonfiguration för `talosctl` – spara denna säkert |
-
----
-
-### 5. Skapa Talos-konfigurationssecrets
-
-***obsolete*** dubbelkolla och radera 5.
+Skapa klustret:
 
 ```bash
-kubectl create secret generic ${CLUSTER_NAME}-talos-cp \
-  --from-file=talos-config/${CLUSTER_NAME}/controlplane.yaml
-
-kubectl create secret generic ${CLUSTER_NAME}-talos-worker \
-  --from-file=talos-config/${CLUSTER_NAME}/worker.yaml
-```
-
----
-
-### 6. Skapa klustret
-
-```bash
-./create-cluster.sh
+# Exempel: litet testkluster
+CP_REPLICAS=1 WORKER_REPLICAS=1 ./create-cluster.sh
 ```
 
 Följ förloppet:
 
 ```bash
+clusterctl describe cluster ${CLUSTER_NAME} -n default
 kubectl get cluster,machine -A
+hcloud load-balancer list
 ```
 
 ---
 
-### 7. Uppdatera DNS
+### 5. Uppdatera DNS
 
 Skapa en DNS-post för Kubernetes API-endpointen:
 
 ```bash
+# Namnet som ska pekas ut
 echo "${DNS_API_NAME}.${CLUSTER_NAME}.${DNS_ZONE}"
 ```
 
-Peka den på IP-adressen för control plane load balancern på Hetzner.
-Du hittar IP-adressen i Hetzner Cloud Console eller via:
+Peka den på IP-adressen för control plane load balancern på Hetzner:
 
 ```bash
 hcloud load-balancer list
@@ -253,11 +195,16 @@ hcloud load-balancer list
 
 ---
 
-### 8. Hämta kubeconfig
+### 6. Hämta credentials
+
+När klustret är uppe hämtar du `talosconfig` och `kubeconfig` med:
 
 ```bash
-clusterctl get kubeconfig ${CLUSTER_NAME} -n default > talos-config/${CLUSTER_NAME}/kubeconfig
+./get-credentials.sh
 ```
+
+Filerna sparas i `talos-config/${CLUSTER_NAME}/` och kan när som helst återhämtas
+från Kubernetes så länge management-klustret är uppe.
 
 Använd workload-klustret:
 
@@ -269,9 +216,16 @@ kubectl get nodes
 > Från och med nu kör du `kubectl` mot **workload-klustret på Hetzner**,
 > inte mot management-klustret.
 
+Använd talosctl:
+
+```bash
+export TALOSCONFIG=talos-config/${CLUSTER_NAME}/talosconfig
+talosctl get members
+```
+
 ---
 
-### 9. Installera Cilium CNI
+### 7. Installera Cilium CNI
 
 ```bash
 ./install_cilium.sh
@@ -287,26 +241,33 @@ kubectl get pods -n kube-system
 
 ## Daglig drift
 
+### Hemligheter i management-klustret
+
+CAPI skapar och hanterar följande secrets automatiskt:
+
+| Secret | Typ | Skapad av | Syfte |
+|---|---|---|---|
+| `hetzner` | Opaque | Manuellt (steg 3) | Hetzner API-token och SSH-nyckelnamn. Används av Hetzner-providern för att skapa och ta bort servrar och load balancers. |
+| `${CLUSTER_NAME}-ca` | Opaque | CAPI automatiskt | Kubernetes CA-certifikat för workload-klustret. Signerar kubeconfig och hanterar kommunikation mellan Kubernetes-komponenter. |
+| `${CLUSTER_NAME}-kubeconfig` | cluster.x-k8s.io/secret | CAPI automatiskt | kubectl-klientkonfiguration för workload-klustret. Hämtas med `get-credentials.sh`. |
+| `${CLUSTER_NAME}-talos` | Opaque | CAPI automatiskt | Talos interna kluster-secrets – CA, bootstrap-token och krypteringsnycklar för etcd. Källan till sanningen för Talos-certifikaten på noderna. |
+| `${CLUSTER_NAME}-talosconfig` | Opaque | CAPI automatiskt | talosctl-klientkonfiguration, signerad med CA:t från `${CLUSTER_NAME}-talos`. Hämtas med `get-credentials.sh`. |
+| `${CLUSTER_NAME}-<machine-id>-bootstrap-data` | Opaque | CAPI automatiskt | Engångsdata per nod vid första boot. Innehåller Talos machine config för en specifik nod. Blir irrelevant efter att noden bootstrappats. |
+
+---
+
 ### Uppgradera Kubernetes-versionen
 
-Redigera Kubernetes-versionen i kluster-manifestet:
-
-```yaml
-spec:
-  topology:
-    version: v1.30.2
-```
-
-Applicera ändringen (mot management-klustret):
+Kör om scriptet med ny version – det uppdaterar manifestet och applicerar det:
 
 ```bash
-kubectl apply -f cluster.yaml
+KUBERNETES_VERSION=v1.32.0 ./create-cluster.sh
 ```
 
-Följ utrullningen:
+Följ utrullningen (mot management-klustret):
 
 ```bash
-kubectl get machines
+kubectl get machines -n default
 kubectl get nodes -w
 ```
 
@@ -339,21 +300,21 @@ kubectl get providers -A
 Talos-certifikat gäller normalt ett år. Kontrollera utgångsdatum:
 
 ```bash
-talosctl -n <node-ip> get certs
+talosctl get certs -n <node-ip>
 ```
 
-> **Obs:** `rotate-ca` roterar CA-certifikaten för hela klustret – det är en ingripande
-> operation som påverkar alla noder. Planera en underhållsperiod och se till att du har
-> tillgång till `talosconfig` och backup innan du kör.
+> **Obs:** `rotate-ca` roterar CA-certifikaten för hela klustret – det är en
+> ingripande operation som påverkar alla noder. Planera en underhållsperiod och
+> se till att du har tillgång till `talosconfig` och backup innan du kör.
 
 ```bash
 talosctl rotate-ca
 ```
 
-Starta om Talos-tjänster vid behov:
+Hämta ny `talosconfig` efter rotation:
 
 ```bash
-talosctl service restart kubelet
+./get-credentials.sh
 ```
 
 ---
@@ -379,10 +340,11 @@ kubectl get machines -A
 ### Vanliga felsökningskommandon
 
 ```bash
-# Kontrollera Cluster API-resurser (management-kluster)
-kubectl get clusters -A
-kubectl get machines -A
-kubectl get machinedeployments -A
+# Övergripande klusterstatus (management-kluster)
+clusterctl describe cluster ${CLUSTER_NAME} -n default
+
+# Kontrollera Cluster API-resurser
+kubectl get clusters,machines,machinedeployments -A
 
 # Detaljinfo om en specifik maskin
 kubectl describe machine <machine-name>
@@ -395,14 +357,18 @@ kubectl logs -n caph-system deploy/caph-controller-manager
 
 # Loggar från CAPI-kärnan
 kubectl logs -n capi-system deploy/capi-controller-manager
+
+# Talos-status direkt mot en nod
+talosctl services -n <node-ip>
+talosctl dmesg -n <node-ip>
 ```
 
 ---
 
 ### Återskapa management-klustret
 
-Om det lokala management-klustret hamnar i ett dåligt tillstånd kan du
-återskapa det utan att påverka workload-klustret på Hetzner.
+Om det lokala management-klustret hamnar i ett dåligt tillstånd kan du återskapa
+det utan att påverka workload-klustret på Hetzner.
 
 Ta bort det befintliga kind-klustret:
 
@@ -410,15 +376,11 @@ Ta bort det befintliga kind-klustret:
 kind delete cluster --name capi-management
 ```
 
-Skapa ett nytt:
+Skapa ett nytt och initiera Cluster API:
 
 ```bash
 kind create cluster --name capi-management
-```
 
-Initiera Cluster API igen (samma kommandon som vid första installation):
-
-```bash
 clusterctl init \
   --core cluster-api \
   --infrastructure hetzner \
@@ -426,10 +388,11 @@ clusterctl init \
   --control-plane talos
 ```
 
-Återanslut till det befintliga workload-klustret:
+Återskapa Hetzner credentials-secret (steg 3 ovan), hämta sedan tillbaka
+credentials för workload-klustret:
 
 ```bash
-clusterctl get kubeconfig ${CLUSTER_NAME} -n default
+./get-credentials.sh
 ```
 
 ---
@@ -441,10 +404,10 @@ clusterctl get kubeconfig ${CLUSTER_NAME} -n default
 kubectl get providers -A
 
 # Kontrollera klusterstatus
-kubectl get cluster
+kubectl get cluster -A
 
 # Bevaka maskiner
-watch kubectl get machines
+watch kubectl get machines -A
 
 # Bevaka noder (workload-kluster)
 watch kubectl get nodes
@@ -459,14 +422,14 @@ Alla kommandon körs mot **management-klustret**.
 ### Skala control plane
 
 Control plane bör alltid ha ett udda antal noder (1, 3, 5) för att etcd ska ha kvorum.
-Ändra `CP_REPLICAS` och applicera om manifestet:
+
+Kör om scriptet med nytt antal – det uppdaterar `TalosControlPlane`-resursen:
 
 ```bash
 CP_REPLICAS=5 ./create-cluster.sh
 ```
 
-Det scriptet gör är att uppdatera `replicas` i `TalosControlPlane`-resursen.
-Du kan göra samma sak manuellt:
+Eller patcha direkt utan att generera om manifestet:
 
 ```bash
 kubectl patch taloscontrolplane ${CLUSTER_NAME}-cp \
@@ -485,14 +448,13 @@ kubectl get machines -n default
 
 ### Skala workers (befintlig pool)
 
-Ändra antalet workers i den befintliga poolen:
+Kör om scriptet med nytt antal – det uppdaterar `MachineDeployment`-resursen:
 
 ```bash
 WORKER_REPLICAS=5 ./create-cluster.sh
 ```
 
-Det scriptet gör är att uppdatera `replicas` i `MachineDeployment`-resursen.
-Du kan göra samma sak manuellt på två sätt:
+Eller patcha direkt:
 
 ```bash
 # Via kubectl scale
@@ -500,7 +462,7 @@ kubectl scale machinedeployment ${CLUSTER_NAME}-workers \
   --replicas=5 \
   -n default
 
-# Via patch (samma som scale men explicit)
+# Via patch
 kubectl patch machinedeployment ${CLUSTER_NAME}-workers \
   -n default \
   --type merge \
@@ -511,11 +473,11 @@ kubectl patch machinedeployment ${CLUSTER_NAME}-workers \
 
 ### Lägga till en nodpool med annan hårdvara
 
-Scriptet skapar en worker-pool per körning. För att lägga till en extra pool – t.ex.
-minnesoptimerad eller med mycket disk – generera ett nytt manifest med `DRY_RUN=true`,
-plocka ut worker-blocken och applicera dem separat.
+Scriptet skapar en worker-pool per körning. För att lägga till en extra pool –
+t.ex. minnesoptimerad eller med mycket disk – generera ett nytt manifest med
+`DRY_RUN=true`, plocka ut worker-blocken och applicera dem separat.
 
-#### **Steg 1: Generera manifest utan att applicera**
+#### Steg 1: Generera manifest utan att applicera
 
 ```bash
 WORKER_MACHINE_TYPE=m1.xlarge \
@@ -524,18 +486,15 @@ DRY_RUN=true \
 ./create-cluster.sh
 ```
 
-#### **Steg 2: Kopiera ut worker-blocken ur det genererade manifestet**
+#### Steg 2: Kopiera ut worker-blocken ur det genererade manifestet
 
-De tre resurser du behöver är:
+De tre resurser du behöver är `MachineDeployment`, `TalosConfigTemplate`
+och `HCloudMachineTemplate`.
 
-- `MachineDeployment`
-- `TalosConfigTemplate`
-- `HCloudMachineTemplate`
+#### Steg 3: Byt namn och lägg till labels
 
-#### **Steg 3: Byt namn och lägg till labels**
-
-Döp om resurserna så de inte krockar med den befintliga poolen, t.ex. `capi-hetzner-workers-memory`,
-och sätt ett `node-pool`-label på noderna så att workloads kan styras dit:
+Döp om resurserna så de inte krockar med den befintliga poolen och sätt ett
+`node-pool`-label så att workloads kan styras dit:
 
 ```yaml
 ---
@@ -578,8 +537,6 @@ spec:
     spec:
       generateType: worker
       talosVersion: v1.12.4
-      data: |
-        # samma innehåll som i worker.yaml
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HCloudMachineTemplate
@@ -589,13 +546,13 @@ metadata:
 spec:
   template:
     spec:
-      type: m1.xlarge       # minnesoptimerad servertyp på Hetzner
+      type: m1.xlarge
       imageName: talos-v1.12.4
       sshKeys:
         - name: hcloudSSHKey
 ```
 
-#### **Steg 4: Applicera**
+#### Steg 4: Applicera
 
 ```bash
 kubectl apply -f workers-memory.yaml
@@ -611,7 +568,7 @@ kubectl get nodes --show-labels
 
 ### Styra workloads till en specifik pool
 
-När noderna har labels kan du styra dit workloads med `nodeSelector` i din deployment:
+När noderna har labels kan du styra dit workloads med `nodeSelector`:
 
 ```yaml
 spec:
@@ -637,9 +594,11 @@ CAPI tömmer noderna och tar bort servrarna på Hetzner automatiskt.
 
 ## Anteckningar
 
-- Management-klustret körs **lokalt** med kind och behöver bara vara
-igång när du gör ändringar via CAPI
+- Management-klustret körs **lokalt** med kind och behöver bara vara igång när
+du gör ändringar via CAPI
 - Workload-klustret körs på **Hetzner Cloud** och är oberoende av att
 management-klustret är uppe
+- CAPI genererar och hanterar alla Talos-secrets automatiskt – du behöver inte
+generera någon konfiguration manuellt
 - All infrastruktur hanteras via **Cluster API** – undvik att göra manuella
 ändringar direkt i Hetzner Cloud Console
