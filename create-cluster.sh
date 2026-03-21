@@ -62,31 +62,14 @@ echo "   Manifest:       ${MANIFEST}"
 echo "   Dry run:        ${DRY_RUN}"
 echo ""
 
-# Generera Talos machine configs om de inte redan finns
-if [[ ! -f "${OUTPUT_DIR}/controlplane.yaml" ]]; then
-  echo "📋 Genererar Talos machine configs..."
-  mkdir -p "${OUTPUT_DIR}"
-  talosctl gen config "${CLUSTER_NAME}" "https://${CLUSTER_NAME}:6443" \
-    --output-dir "${OUTPUT_DIR}" \
-    --with-docs=false \
-    --with-examples=false
-else
-  echo "📋 Talos machine configs finns redan i ${OUTPUT_DIR}, hoppar över generering."
-fi
-
-# Läs in config-data och indentera för YAML inline-block
-CP_DATA=$(sed 's/^/        /' "${OUTPUT_DIR}/controlplane.yaml")
-WORKER_DATA=$(sed 's/^/        /' "${OUTPUT_DIR}/worker.yaml")
-
-# Generera manifest
-echo "📝 Genererar manifest: ${MANIFEST}"
-
 read -r -p "Continue? (y/N) " confirm
 [[ "${confirm}" =~ ^[yY]$ ]] || {
   echo "Aborted."
   exit 0
 }
 
+# Generera manifest
+echo "📝 Genererar manifest: ${MANIFEST}"
 mkdir -p "${OUTPUT_DIR}"
 cat >"${MANIFEST}" <<YAML
 ---
@@ -102,8 +85,6 @@ spec:
         - ${POD_CIDR}
     services:
       cidrBlocks:
-
-
         - ${SERVICE_CIDR}
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
@@ -155,8 +136,6 @@ spec:
     controlplane:
       generateType: controlplane
       talosVersion: ${TALOS_VERSION}
-      data: |
-${CP_DATA}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HCloudMachineTemplate
@@ -209,8 +188,6 @@ spec:
     spec:
       generateType: worker
       talosVersion: ${TALOS_VERSION}
-      data: |
-${WORKER_DATA}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HCloudMachineTemplate
@@ -241,3 +218,6 @@ echo "⏳ Följ provisioneringen med:"
 echo "   clusterctl describe cluster ${CLUSTER_NAME} -n ${NAMESPACE}"
 echo "   kubectl get machines -n ${NAMESPACE}"
 echo "   kubectl get hetznercluster -n ${NAMESPACE}"
+echo ""
+echo "🔑 När klustret är klart, hämta talosconfig och kubeconfig med:"
+echo "   ./get-credentials.sh"

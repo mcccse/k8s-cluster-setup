@@ -8,7 +8,7 @@ and review other options that can be enabled
 HCLOUD_LOCATION="hel1"
 TALOS_VERSION="v1.12.4"
 SCHEMATIC_ID=$(curl -sX POST \
-  <https://factory.talos.dev/schematics> \
+  https://factory.talos.dev/schematics \
   -H "Content-Type: application/yaml" \
   --data-binary '
 customization:
