@@ -145,6 +145,7 @@ kubectl create secret generic hetzner \
   --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl patch secret hetzner \
+  -n default \
   -p '{"metadata":{"labels":{"clusterctl.cluster.x-k8s.io/move":""}}}'
 ```
 
