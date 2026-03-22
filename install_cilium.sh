@@ -8,6 +8,7 @@ set -euo pipefail
 CILIUM_VERSION="${CILIUM_VERSION:-1.18.3}"
 NAMESPACE="${NAMESPACE:-cilium-system}"
 RELEASE="${RELEASE:-cilium}"
+GATEWAY_API_VERSION="${GATEWAY_API_VERSION:-1.2.1}"
 
 # K8S_SERVICE_HOST och K8S_SERVICE_PORT löses ut automatiskt från
 # kubeconfig om de inte är satta explicit
@@ -19,7 +20,8 @@ usage() {
   echo "Användning: $0"
   echo ""
   echo "Miljövariabler (alla har defaultvärden):"
-  echo "  CILIUM_VERSION      Cilium Helm chart-version  (default: 1.18.3)"
+  echo "  CILIUM_VERSION      Cilium Helm chart-version   (default: 1.18.3)"
+  echo "  GATEWAY_API_VERSION Gateway API CRD-version     (default: 1.2.1)"
   echo "  NAMESPACE           Namespace för Cilium        (default: cilium-system)"
   echo "  RELEASE             Helm release-namn           (default: cilium)"
   echo "  K8S_SERVICE_HOST    Kubernetes API-host         (default: löses från kubeconfig)"
@@ -36,6 +38,12 @@ usage() {
 # ============================================================
 # Preflight checks
 # ============================================================
+if kubectl config current-context | grep -q "kind-"; then
+  echo "⚠️  Du verkar stå i ett kind-kluster (management). Byt till workload-klustret:"
+  echo "   export KUBECONFIG=talos-config/\${CLUSTER_NAME}/kubeconfig"
+  exit 1
+fi
+
 for cmd in helm kubectl; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "❌ $cmd not found."
@@ -70,11 +78,12 @@ if [[ -z "${K8S_SERVICE_HOST}" || -z "${K8S_SERVICE_PORT}" ]]; then
 fi
 
 echo "🔧 Konfiguration:"
-echo "   Context:          ${CONTEXT}"
-echo "   Cilium version:   ${CILIUM_VERSION}"
-echo "   Namespace:        ${NAMESPACE}"
-echo "   k8sServiceHost:   ${K8S_SERVICE_HOST}"
-echo "   k8sServicePort:   ${K8S_SERVICE_PORT}"
+echo "   Context:            ${CONTEXT}"
+echo "   Cilium version:     ${CILIUM_VERSION}"
+echo "   Gateway API CRDs:   ${GATEWAY_API_VERSION}"
+echo "   Namespace:          ${NAMESPACE}"
+echo "   k8sServiceHost:     ${K8S_SERVICE_HOST}"
+echo "   k8sServicePort:     ${K8S_SERVICE_PORT}"
 echo ""
 
 read -r -p "Continue? (y/N) " confirm
@@ -84,7 +93,22 @@ read -r -p "Continue? (y/N) " confirm
 }
 
 # ============================================================
-# Skapa namespace med privileged pod security
+# Steg 1: Gateway API CRDs
+# Måste installeras INNAN Cilium startar med gatewayAPI.enabled=true
+# ============================================================
+echo ""
+echo "📦 Installerar Gateway API CRDs v${GATEWAY_API_VERSION}..."
+kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/v${GATEWAY_API_VERSION}/standard-install.yaml"
+
+echo "⏳ Väntar på att Gateway API CRDs ska bli etablerade..."
+kubectl wait --for=condition=Established \
+  crd/gatewayclasses.gateway.networking.k8s.io \
+  crd/gateways.gateway.networking.k8s.io \
+  crd/httproutes.gateway.networking.k8s.io \
+  --timeout=60s
+
+# ============================================================
+# Steg 2: Skapa namespace med privileged pod security
 # ============================================================
 echo ""
 echo "📦 Skapar namespace ${NAMESPACE}..."
@@ -96,12 +120,12 @@ kubectl label ns "${NAMESPACE}" \
   --overwrite
 
 # ============================================================
-# Installera Cilium via Helm
+# Steg 3: Ta bort Flannel
+# Talos installerar Flannel som standard-CNI. Vi tar bort det innan
+# Cilium installeras för att undvika att två CNI:er körs parallellt.
 # ============================================================
 echo ""
 echo "🗑️  Tar bort Flannel..."
-# Talos installerar Flannel som standard-CNI. Vi tar bort det innan
-# Cilium installeras för att undvika att två CNI:er körs parallellt.
 for resource in \
   "daemonset/kube-flannel kube-system" \
   "configmap/kube-flannel-cfg kube-system" \
@@ -125,7 +149,7 @@ echo "⏳ Väntar 5s på att Flannel-pods ska försvinna..."
 sleep 5
 
 # ============================================================
-# Installera Cilium via Helm
+# Steg 4: Installera Cilium via Helm
 # ============================================================
 echo ""
 echo "🚀 Installerar Cilium ${CILIUM_VERSION}..."
@@ -145,6 +169,10 @@ helm upgrade --install "${RELEASE}" cilium/cilium \
   --set k8sServicePort="${K8S_SERVICE_PORT}" \
   --set encryption.enabled=true \
   --set encryption.type=wireguard \
+  --set gatewayAPI.enabled=true \
+  --set gatewayAPI.enableAlpn=true \
+  --set-string gatewayAPI.gatewayClass.create="true" \
+  --set envoy.securityContext.capabilities.keepCapNetBindService=true \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true \
   --set hubble.enabled=true \
@@ -161,6 +189,22 @@ echo "⏳ Väntar på att Cilium ska bli redo..."
 kubectl rollout status daemonset/cilium -n "${NAMESPACE}" --timeout=300s
 
 echo ""
+echo "🔄 Startar om Cilium-operatorn för att aktivera Gateway API-kontrollern..."
+kubectl rollout restart deployment/cilium-operator -n "${NAMESPACE}"
+kubectl rollout status deployment/cilium-operator -n "${NAMESPACE}" --timeout=120s
+
+echo ""
+echo "⏳ Väntar på att GatewayClass cilium ska bli Accepted..."
+kubectl wait --for=condition=Accepted \
+  gatewayclass/cilium \
+  --timeout=120s
+
+echo ""
+echo "🔄 Startar om hubble-relay för att säkerställa korrekt nätverksanslutning..."
+kubectl rollout restart deployment/hubble-relay -n "${NAMESPACE}"
+kubectl rollout status deployment/hubble-relay -n "${NAMESPACE}" --timeout=120s
+
+echo ""
 echo "🔒 Krypteringsstatus:"
 for pod in $(kubectl get pods -n "${NAMESPACE}" -l k8s-app=cilium -o name); do
   echo "   === $pod ==="
@@ -171,6 +215,12 @@ echo ""
 echo "✅ Cilium installerat! Nodstatus:"
 kubectl get nodes -o wide
 echo ""
+echo "   GatewayClass:"
+kubectl get gatewayclass
+echo ""
 echo "   Verifiera vidare med:"
 echo "   helm get values ${RELEASE} -n ${NAMESPACE}"
 echo "   cilium connectivity test"
+echo ""
+echo "   Nästa steg:"
+echo "   ./install_gateway.sh"
