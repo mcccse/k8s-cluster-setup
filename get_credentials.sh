@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# get-credentials.sh — hämtar talosconfig och kubeconfig från Kubernetes efter att klustret är uppe
+# get_credentials.sh — hämtar talosconfig och kubeconfig från Kubernetes efter att klustret är uppe
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-capi-hetzner}"

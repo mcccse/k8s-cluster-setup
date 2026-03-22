@@ -156,17 +156,20 @@ kubectl patch secret hetzner \
 CAPI genererar automatiskt alla Talos-secrets och certifikat vid bootstrap.
 Du behöver inte generera någon konfiguration manuellt.
 
+> **Obs:** Talos installerar Flannel som standard-CNI. Det tas bort automatiskt
+> av `install_cilium.sh` i steg 7.
+
 Visa tillgängliga variabler:
 
 ```bash
-./create-cluster.sh -h
+./create_cluster.sh -h
 ```
 
 Skapa klustret:
 
 ```bash
 # Exempel: litet testkluster
-CP_REPLICAS=1 WORKER_REPLICAS=1 ./create-cluster.sh
+CP_REPLICAS=1 WORKER_REPLICAS=1 ./create_cluster.sh
 ```
 
 Följ förloppet:
@@ -201,7 +204,7 @@ hcloud load-balancer list
 När klustret är uppe hämtar du `talosconfig` och `kubeconfig` med:
 
 ```bash
-./get-credentials.sh
+./get_credentials.sh
 ```
 
 Filerna sparas i `talos-config/${CLUSTER_NAME}/` och kan när som helst återhämtas
@@ -229,14 +232,31 @@ talosctl get members
 ### 7. Installera Cilium CNI
 
 ```bash
-./install_cilium.sh
+# Note:
+clusterctl describe cluster ${CLUSTER_NAME} -n default
+# Should report
+NAME                                                      REPLICAS AVAILABLE READY UP TO DATE STATUS   REASON            SINCE  MESSAGE
+├─ClusterInfrastructure - HetznerCluster/${CLUSTER_NAME}                                      True     NoReasonReported  6s
+├─ControlPlane - TalosControlPlane/${CLUSTER_NAME}-cp     1/1                                 True     NoReasonReported  6s
 ```
 
-Verifiera (mot workload-klustret):
+`install_cilium.sh` tar bort Flannel och installerar Cilium via Helm med
+WireGuard-kryptering och Hubble aktiverat.
 
 ```bash
-kubectl get pods -n kube-system
+KUBECONFIG=talos-config/${CLUSTER_NAME}/kubeconfig ./install_cilium.sh
 ```
+
+Verifiera krypteringsstatus (mot workload-klustret):
+
+```bash
+for pod in $(kubectl get pods -n cilium-system -l k8s-app=cilium -o name); do
+  echo "=== $pod ==="
+  kubectl exec -n cilium-system $pod -- cilium encrypt status
+done
+```
+
+Du bör se `Encryption: Wireguard` med en peer per övrig nod.
 
 ---
 
@@ -247,12 +267,12 @@ kubectl get pods -n kube-system
 CAPI skapar och hanterar följande secrets automatiskt:
 
 | Secret | Typ | Skapad av | Syfte |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `hetzner` | Opaque | Manuellt (steg 3) | Hetzner API-token och SSH-nyckelnamn. Används av Hetzner-providern för att skapa och ta bort servrar och load balancers. |
 | `${CLUSTER_NAME}-ca` | Opaque | CAPI automatiskt | Kubernetes CA-certifikat för workload-klustret. Signerar kubeconfig och hanterar kommunikation mellan Kubernetes-komponenter. |
-| `${CLUSTER_NAME}-kubeconfig` | cluster.x-k8s.io/secret | CAPI automatiskt | kubectl-klientkonfiguration för workload-klustret. Hämtas med `get-credentials.sh`. |
+| `${CLUSTER_NAME}-kubeconfig` | cluster.x-k8s.io/secret | CAPI automatiskt | kubectl-klientkonfiguration för workload-klustret. Hämtas med `get_credentials.sh`. |
 | `${CLUSTER_NAME}-talos` | Opaque | CAPI automatiskt | Talos interna kluster-secrets – CA, bootstrap-token och krypteringsnycklar för etcd. Källan till sanningen för Talos-certifikaten på noderna. |
-| `${CLUSTER_NAME}-talosconfig` | Opaque | CAPI automatiskt | talosctl-klientkonfiguration, signerad med CA:t från `${CLUSTER_NAME}-talos`. Hämtas med `get-credentials.sh`. |
+| `${CLUSTER_NAME}-talosconfig` | Opaque | CAPI automatiskt | talosctl-klientkonfiguration, signerad med CA:t från `${CLUSTER_NAME}-talos`. Hämtas med `get_credentials.sh`. |
 | `${CLUSTER_NAME}-<machine-id>-bootstrap-data` | Opaque | CAPI automatiskt | Engångsdata per nod vid första boot. Innehåller Talos machine config för en specifik nod. Blir irrelevant efter att noden bootstrappats. |
 
 ---
@@ -262,7 +282,7 @@ CAPI skapar och hanterar följande secrets automatiskt:
 Kör om scriptet med ny version – det uppdaterar manifestet och applicerar det:
 
 ```bash
-KUBERNETES_VERSION=v1.32.0 ./create-cluster.sh
+KUBERNETES_VERSION=v1.32.0 ./create_cluster.sh
 ```
 
 Följ utrullningen (mot management-klustret):
@@ -315,7 +335,7 @@ talosctl rotate-ca
 Hämta ny `talosconfig` efter rotation:
 
 ```bash
-./get-credentials.sh
+./get_credentials.sh
 ```
 
 ---
@@ -393,7 +413,7 @@ clusterctl init \
 credentials för workload-klustret:
 
 ```bash
-./get-credentials.sh
+./get_credentials.sh
 ```
 
 ---
@@ -427,7 +447,7 @@ Control plane bör alltid ha ett udda antal noder (1, 3, 5) för att etcd ska ha
 Kör om scriptet med nytt antal – det uppdaterar `TalosControlPlane`-resursen:
 
 ```bash
-CP_REPLICAS=5 ./create-cluster.sh
+CP_REPLICAS=5 ./create_cluster.sh
 ```
 
 Eller patcha direkt utan att generera om manifestet:
@@ -452,7 +472,7 @@ kubectl get machines -n default
 Kör om scriptet med nytt antal – det uppdaterar `MachineDeployment`-resursen:
 
 ```bash
-WORKER_REPLICAS=5 ./create-cluster.sh
+WORKER_REPLICAS=5 ./create_cluster.sh
 ```
 
 Eller patcha direkt:
@@ -484,7 +504,7 @@ t.ex. minnesoptimerad eller med mycket disk – generera ett nytt manifest med
 WORKER_MACHINE_TYPE=m1.xlarge \
 WORKER_REPLICAS=2 \
 DRY_RUN=true \
-./create-cluster.sh
+./create_cluster.sh
 ```
 
 #### Steg 2: Kopiera ut worker-blocken ur det genererade manifestet
@@ -601,5 +621,7 @@ du gör ändringar via CAPI
 management-klustret är uppe
 - CAPI genererar och hanterar alla Talos-secrets automatiskt – du behöver inte
 generera någon konfiguration manuellt
+- Talos installerar **Flannel** som standard-CNI – det ersätts av **Cilium** med
+WireGuard-kryptering när `install_cilium.sh` körs
 - All infrastruktur hanteras via **Cluster API** – undvik att göra manuella
 ändringar direkt i Hetzner Cloud Console
