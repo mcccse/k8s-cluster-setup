@@ -99,6 +99,8 @@ cilium_args=(
   "--set" "cgroup.hostRoot=/sys/fs/cgroup"
   "--set" "k8sServiceHost=${K8S_SERVICE_HOST}"
   "--set" "k8sServicePort=${K8S_SERVICE_PORT}"
+  "--set" "encryption.enabled=true"
+  "--set" "encryption.type=wireguard"
 )
 
 [[ -n "${CILIUM_VERSION}" ]] && cilium_args+=("--version" "${CILIUM_VERSION}")
