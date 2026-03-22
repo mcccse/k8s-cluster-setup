@@ -64,6 +64,8 @@ export SSH_KEY_NAME="<namn på din uppladdade ssh-nyckel>"
 export CLUSTER_NAME="capi-hetzner"
 export DNS_ZONE="example.com"
 export DNS_API_NAME="kubeapi"
+export REGION="fsn1"            # Bäst att exportera, används av två skript
+
 ```
 
 ### Verktyg som behövs
