@@ -231,11 +231,20 @@ talosctl get members
 
 ### 7. Installera Cilium CNI
 
+```bash
+# Note:
+clusterctl describe cluster ${CLUSTER_NAME} -n default
+# Should report
+NAME                                                      REPLICAS AVAILABLE READY UP TO DATE STATUS   REASON            SINCE  MESSAGE
+├─ClusterInfrastructure - HetznerCluster/${CLUSTER_NAME}                                      True     NoReasonReported  6s
+├─ControlPlane - TalosControlPlane/${CLUSTER_NAME}-cp     1/1                                 True     NoReasonReported  6s
+```
+
 `install_cilium.sh` tar bort Flannel och installerar Cilium via Helm med
 WireGuard-kryptering och Hubble aktiverat.
 
 ```bash
-./install_cilium.sh
+KUBECONFIG=talos-config/${CLUSTER_NAME}/kubeconfig ./install_cilium.sh
 ```
 
 Verifiera krypteringsstatus (mot workload-klustret):
