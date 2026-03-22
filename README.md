@@ -231,7 +231,109 @@ talosctl get members
 
 ---
 
-### 7. Installera Cilium CNI
+### 7. Installera Gateway
+
+Gateway API är Kubernetes standard för att hantera inkommande trafik. Cilium fungerar
+som Gateway-kontroller och skapar en Hetzner Load Balancer automatiskt när en Gateway-resurs
+appliceras. En shared Gateway innebär att alla applikationer delar samma LB och IP-adress.
+
+#### HTTP (steg 1)
+
+```bash
+./install_gateway.sh
+```
+
+Bevaka att Hetzner LB får en IP (kan ta 1-2 minuter):
+
+```bash
+kubectl get gateway shared-gateway -n gateway -w
+```
+
+Hämta IP när den är tilldelad:
+
+```bash
+kubectl get gateway shared-gateway -n gateway \
+  -o jsonpath='{.status.addresses[0].value}'
+```
+
+Skapa en DNS-post som pekar på IP:n för de domäner du vill använda,
+t.ex. `*.${CLUSTER_NAME}.example.com`.
+
+Exponera en applikation med en HTTPRoute:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: min-app
+  namespace: min-app-namespace
+spec:
+  parentRefs:
+    - name: shared-gateway
+      namespace: gateway
+  hostnames:
+    - min-app.${CLUSTER_NAME}.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: min-app-service
+          port: 8080
+```
+
+Verifiera:
+
+```bash
+curl -s http://min-app.${CLUSTER_NAME}.example.com | head -5
+```
+
+#### HTTPS med wildcard-certifikat (steg 2)
+
+***work in progress***
+
+När HTTP fungerar kan du lägga till TLS via cert-manager och Let's Encrypt.
+Ett wildcard-certifikat (`*.${CLUSTER_NAME}.example.com`) täcker alla subdomäner
+och kräver bara ett anrop till Let's Encrypt.
+
+Wildcard kräver DNS-01 challenge – cert-manager skapar en TXT-post i tex Cloudflare
+för att verifiera domänägandet. Du behöver ett Cloudflare API-token med
+rättigheter att redigera DNS-poster för din zon.
+
+```bash
+LETSENCRYPT_EMAIL=ops@example.com ./install_gateway_tls.sh
+```
+
+Kör mot staging först för att verifiera att allt fungerar innan du byter till
+production (Let's Encrypt har strikta rate limits på production):
+
+```bash
+# Staging (ej betrodda certifikat men inga rate limits)
+LETSENCRYPT_EMAIL=ops@example.com \
+LETSENCRYPT_ENV=staging \
+./install_gateway_tls.sh
+
+# Production (betrodda certifikat)
+LETSENCRYPT_EMAIL=ops@example.com \
+LETSENCRYPT_ENV=production \
+./install_gateway_tls.sh
+```
+
+Bevaka att wildcard-certifikatet utfärdas:
+
+```bash
+kubectl get certificate -n gateway -w
+kubectl describe certificate wildcard-tls -n gateway
+```
+
+> **Obs:** Ta bort Gateway innan du tar bort klustret, annars lever Hetzner
+> Load Balancern kvar och måste tas bort manuellt. Se *Ta bort klustret* under
+> Daglig drift.
+
+---
+
+### 8. Installera Cilium CNI
 
 ```bash
 # Note:
@@ -284,7 +386,7 @@ CAPI skapar och hanterar följande secrets automatiskt:
 Kör om scriptet med ny version – det uppdaterar manifestet och applicerar det:
 
 ```bash
-KUBERNETES_VERSION=v1.32.0 ./create_cluster.sh
+KUBERNETES_VERSION=v1.35.0 ./create_cluster.sh
 ```
 
 Följ utrullningen (mot management-klustret):
@@ -344,6 +446,15 @@ Hämta ny `talosconfig` efter rotation:
 
 ### Ta bort klustret
 
+Rensa upp LoadBalancer skapad av Cloud Controller Manager.
+Kör mot workload-klustret.
+
+```bash
+kubectl delete gateway shared-gateway -n gateway
+# Vänta tills LB försvinner i Hetzner
+hcloud load-balancer list
+```
+
 Ta bort workload-klustret via Cluster API (kör mot management-klustret):
 
 ```bash
@@ -355,6 +466,9 @@ Följ borttagningen – infrastrukturen på Hetzner tas bort automatiskt:
 ```bash
 kubectl get machines -A
 ```
+
+Om LoadBalancer från CCM inte tagits bort innan får man göra det manuellet:
+`hcloud load-balancer delete <LB-iD>`
 
 ---
 
