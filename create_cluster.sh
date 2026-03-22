@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# create-cluster.sh — genererar och applicerar ett CAPI/Talos/Hetzner-klustermanifest
+# create_cluster.sh — genererar och applicerar ett CAPI/Talos/Hetzner-klustermanifest
 set -euo pipefail
 
 # ============================================================
@@ -219,5 +219,6 @@ echo "   clusterctl describe cluster ${CLUSTER_NAME} -n ${NAMESPACE}"
 echo "   kubectl get machines -n ${NAMESPACE}"
 echo "   kubectl get hetznercluster -n ${NAMESPACE}"
 echo ""
-echo "🔑 När klustret är klart, hämta talosconfig och kubeconfig med:"
-echo "   ./get-credentials.sh"
+echo "🔑 När klustret är klart, hämta credentials och installera Cilium:"
+echo "   ./get_credentials.sh"
+echo "   KUBECONFIG=${OUTPUT_DIR}/kubeconfig ./install_cilium.sh"
