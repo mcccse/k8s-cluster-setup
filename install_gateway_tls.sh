@@ -11,7 +11,7 @@ GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-gateway}"
 GATEWAY_NAME="${GATEWAY_NAME:-shared-gateway}"
 LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:-}"
 LETSENCRYPT_ENV="${LETSENCRYPT_ENV:-staging}" # staging eller production
-TLS_HOSTNAMES="${TLS_HOSTNAMES:-}" # Kommaseparerade FQDNs för certifikatet (http-01 stöder ej wildcard)
+TLS_HOSTNAMES="${TLS_HOSTNAMES:-}"            # Kommaseparerade FQDNs för certifikatet (http-01 stöder ej wildcard)
 # ============================================================
 
 usage() {
@@ -171,7 +171,7 @@ kubectl wait --for=condition=Ready \
 echo ""
 echo "📜 Skapar Certificate ${GATEWAY_NAME}-tls för: ${TLS_HOSTNAMES}"
 DNS_NAMES_YAML=""
-IFS=',' read -ra _hosts <<< "${TLS_HOSTNAMES}"
+IFS=',' read -ra _hosts <<<"${TLS_HOSTNAMES}"
 for h in "${_hosts[@]}"; do
   h_trimmed="$(echo "$h" | xargs)"
   [[ -z "$h_trimmed" ]] && continue
