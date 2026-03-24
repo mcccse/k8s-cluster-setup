@@ -159,7 +159,7 @@ CAPI genererar automatiskt alla Talos-secrets och certifikat vid bootstrap.
 Du behöver inte generera någon konfiguration manuellt.
 
 > **Obs:** Talos installerar Flannel som standard-CNI. Det tas bort automatiskt
-> av `install_cilium.sh` i steg 7.
+> av `install_cilium.sh` i steg 8.
 
 Visa tillgängliga variabler:
 
@@ -231,11 +231,70 @@ talosctl get members
 
 ---
 
-### 7. Installera Gateway
+### 7. Installera Hetzner Cloud Controller Manager (HCCM)
+
+HCCM krävs för att Services av typen LoadBalancer (t.ex. Gateway)
+ska få externa IP-adresser på Hetzner.
+Körs mot workload-klustret.
+Viktigt att sätta `REGION` korrekt,
+om ni inte exporterat varaibeln tidigare.
+Risken finns annars att LoadBalancer sätts upp på annat ställe än kluster.
+
+Kör:
+
+```bash
+./install_hccm.sh
+
+# Exempel med explicita värden
+# HCLOUD_TOKEN=xxx REGION=hel1 ./install_hccm.sh
+```
+
+Verifiera:
+
+```bash
+kubectl rollout status deployment/hcloud-cloud-controller-manager -n hccm-system
+kubectl get nodes -o custom-columns="NAME:.metadata.name,PROVIDERID:.spec.providerID"
+```
+
+---
+
+### 8. Installera Cilium CNI
+
+```bash
+# Note:
+clusterctl describe cluster ${CLUSTER_NAME} -n default
+# Should report
+NAME                                                      REPLICAS AVAILABLE READY UP TO DATE STATUS   REASON            SINCE  MESSAGE
+├─ClusterInfrastructure - HetznerCluster/${CLUSTER_NAME}                                      True     NoReasonReported  6s
+├─ControlPlane - TalosControlPlane/${CLUSTER_NAME}-cp     1/1                                 True     NoReasonReported  6s
+```
+
+`install_cilium.sh` tar bort Flannel och installerar Cilium via Helm med
+WireGuard-kryptering och Hubble aktiverat.
+
+```bash
+./install_cilium.sh
+```
+
+Verifiera krypteringsstatus (mot workload-klustret):
+
+```bash
+for pod in $(kubectl get pods -n cilium-system -l k8s-app=cilium -o name); do
+  echo "=== $pod ==="
+  kubectl exec -n cilium-system $pod -- cilium encrypt status
+done
+```
+
+Du bör se `Encryption: Wireguard` med en peer per övrig nod
+
+---
+
+### 9. Installera Gateway
 
 Gateway API är Kubernetes standard för att hantera inkommande trafik. Cilium fungerar
 som Gateway-kontroller och skapar en Hetzner Load Balancer automatiskt när en Gateway-resurs
-appliceras. En shared Gateway innebär att alla applikationer delar samma LB och IP-adress.
+appliceras.
+En shared Gateway innebär att alla applikationer delar samma LB och IP-adress.
 
 #### HTTP (steg 1)
 
@@ -330,37 +389,6 @@ kubectl describe certificate wildcard-tls -n gateway
 > **Obs:** Ta bort Gateway innan du tar bort klustret, annars lever Hetzner
 > Load Balancern kvar och måste tas bort manuellt. Se *Ta bort klustret* under
 > Daglig drift.
-
----
-
-### 8. Installera Cilium CNI
-
-```bash
-# Note:
-clusterctl describe cluster ${CLUSTER_NAME} -n default
-# Should report
-NAME                                                      REPLICAS AVAILABLE READY UP TO DATE STATUS   REASON            SINCE  MESSAGE
-├─ClusterInfrastructure - HetznerCluster/${CLUSTER_NAME}                                      True     NoReasonReported  6s
-├─ControlPlane - TalosControlPlane/${CLUSTER_NAME}-cp     1/1                                 True     NoReasonReported  6s
-```
-
-`install_cilium.sh` tar bort Flannel och installerar Cilium via Helm med
-WireGuard-kryptering och Hubble aktiverat.
-
-```bash
-KUBECONFIG=talos-config/${CLUSTER_NAME}/kubeconfig ./install_cilium.sh
-```
-
-Verifiera krypteringsstatus (mot workload-klustret):
-
-```bash
-for pod in $(kubectl get pods -n cilium-system -l k8s-app=cilium -o name); do
-  echo "=== $pod ==="
-  kubectl exec -n cilium-system $pod -- cilium encrypt status
-done
-```
-
-Du bör se `Encryption: Wireguard` med en peer per övrig nod.
 
 ---
 

@@ -126,8 +126,8 @@ echo ""
 echo "🔗 Sätter ProviderID på noder..."
 
 # Hämta alla noder utan ProviderID
-NODES=$(kubectl get nodes \
-  -o jsonpath='{range .items[?(@.spec.providerID=="")]}{.metadata.name}{"\n"}{end}')
+NODES=$(kubectl get nodes -o json |
+  jq -r '.items[] | select(.spec.providerID == null or .spec.providerID == "") | .metadata.name')
 
 if [[ -z "${NODES}" ]]; then
   echo "   Alla noder har redan ProviderID, hoppar över."
@@ -162,4 +162,4 @@ echo "   LoadBalancer-services får nu externa IP-adresser automatiskt"
 echo "   i region ${REGION}."
 echo ""
 echo "   Nästa steg:"
-echo "   ./install_cilium.sh"
+echo "   ./install_gateway.sh"
