@@ -11,6 +11,7 @@ GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-gateway}"
 GATEWAY_NAME="${GATEWAY_NAME:-shared-gateway}"
 LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:-}"
 LETSENCRYPT_ENV="${LETSENCRYPT_ENV:-staging}" # staging eller production
+TLS_HOSTNAMES="${TLS_HOSTNAMES:-}" # Kommaseparerade FQDNs för certifikatet (http-01 stöder ej wildcard)
 # ============================================================
 
 usage() {
@@ -22,10 +23,11 @@ usage() {
   echo "  GATEWAY_NAME           Namn på shared Gateway            (default: shared-gateway)"
   echo "  LETSENCRYPT_EMAIL      E-post till Let's Encrypt         (obligatorisk)"
   echo "  LETSENCRYPT_ENV        staging eller production           (default: staging)"
+  echo "  TLS_HOSTNAMES          Kommaseparerade FQDNs för cert    (obligatorisk, ej wildcard)"
   echo ""
   echo "Exempel:"
-  echo "  LETSENCRYPT_EMAIL=ops@example.com $0"
-  echo "  LETSENCRYPT_EMAIL=ops@example.com LETSENCRYPT_ENV=production $0"
+  echo "  LETSENCRYPT_EMAIL=ops@example.com TLS_HOSTNAMES=min-app.example.com $0"
+  echo "  LETSENCRYPT_EMAIL=ops@example.com LETSENCRYPT_ENV=production TLS_HOSTNAMES=min-app.example.com,api.example.com $0"
   exit 0
 }
 
@@ -62,6 +64,12 @@ fi
 if ! kubectl get gateway "${GATEWAY_NAME}" -n "${GATEWAY_NAMESPACE}" &>/dev/null 2>&1; then
   echo "❌ Gateway '${GATEWAY_NAME}' hittades inte i namespace '${GATEWAY_NAMESPACE}'."
   echo "   Kör install_gateway.sh och verifiera att HTTP fungerar innan du kör detta script."
+  exit 1
+fi
+
+if [[ -z "${TLS_HOSTNAMES}" ]]; then
+  echo "❌ TLS_HOSTNAMES måste vara satt till kommaseparerade FQDNs för certifikatet (http-01 stöder inte wildcard)."
+  echo "   Exempel: TLS_HOSTNAMES=min-app.example.com,api.example.com $0"
   exit 1
 fi
 
@@ -129,6 +137,8 @@ spec:
               - name: ${GATEWAY_NAME}
                 namespace: ${GATEWAY_NAMESPACE}
                 kind: Gateway
+                sectionName: http
+                sectionName: http
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -156,7 +166,44 @@ kubectl wait --for=condition=Ready \
   --timeout=60s
 
 # ============================================================
-# Steg 3: Uppdatera Gateway med HTTPS-listener
+# Steg 3: Skapa Certificate för angivna hostnames (HTTP-01)
+# ============================================================
+echo ""
+echo "📜 Skapar Certificate ${GATEWAY_NAME}-tls för: ${TLS_HOSTNAMES}"
+DNS_NAMES_YAML=""
+IFS=',' read -ra _hosts <<< "${TLS_HOSTNAMES}"
+for h in "${_hosts[@]}"; do
+  h_trimmed="$(echo "$h" | xargs)"
+  [[ -z "$h_trimmed" ]] && continue
+  DNS_NAMES_YAML="${DNS_NAMES_YAML}      - ${h_trimmed}\n"
+done
+if [[ -z "${DNS_NAMES_YAML}" ]]; then
+  echo "❌ Inga giltiga hostnames i TLS_HOSTNAMES"
+  exit 1
+fi
+kubectl apply -f - <<EOF
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ${GATEWAY_NAME}-tls
+  namespace: ${GATEWAY_NAMESPACE}
+spec:
+  secretName: ${GATEWAY_NAME}-tls
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-${LETSENCRYPT_ENV}
+  dnsNames:
+$(printf "%b" "${DNS_NAMES_YAML}")
+EOF
+
+echo "⏳ Väntar på att Certificate ska bli redo (detta kan ta flera minuter)..."
+kubectl wait --for=condition=Ready \
+  certificate/${GATEWAY_NAME}-tls \
+  -n ${GATEWAY_NAMESPACE} \
+  --timeout=10m || true
+
+# ============================================================
+# Steg 4: Uppdatera Gateway med HTTPS-listener
 # ============================================================
 echo ""
 echo "🔒 Uppdaterar Gateway med HTTPS-listener..."
