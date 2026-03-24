@@ -58,6 +58,7 @@ fi
 if [[ -z "${LETSENCRYPT_EMAIL}" ]]; then
   echo "❌ LETSENCRYPT_EMAIL måste vara satt"
   echo "   Exempel: LETSENCRYPT_EMAIL=ops@example.com $0"
+  usage
   exit 1
 fi
 
@@ -70,6 +71,7 @@ fi
 if [[ -z "${TLS_HOSTNAMES}" ]]; then
   echo "❌ TLS_HOSTNAMES måste vara satt till kommaseparerade FQDNs för certifikatet (http-01 stöder inte wildcard)."
   echo "   Exempel: TLS_HOSTNAMES=min-app.example.com,api.example.com $0"
+  usage
   exit 1
 fi
 
