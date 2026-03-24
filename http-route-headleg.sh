@@ -12,7 +12,7 @@ spec:
     - name: shared-gateway
       namespace: gateway
   hostnames:
-    - headlamp.livedemo.mccc.se
+    - headlamp.${CLUSTER_NAME}.${DNS_ZONE}
   rules:
     - matches:
         - path:

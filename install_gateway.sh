@@ -89,6 +89,8 @@ spec:
           from: All
 EOF
 
+kubectl rollout restart deployment/hcloud-cloud-controller-manager -n hccm-system
+
 echo ""
 echo "✅ Gateway skapad!"
 echo ""

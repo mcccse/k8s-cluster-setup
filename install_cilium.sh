@@ -200,9 +200,11 @@ kubectl wait --for=condition=Accepted \
   --timeout=120s
 
 echo ""
-echo "🔄 Startar om hubble-relay för att säkerställa korrekt nätverksanslutning..."
+echo "🔄 Startar om hubble-relay och ui för att säkerställa korrekt nätverksanslutning..."
 kubectl rollout restart deployment/hubble-relay -n "${NAMESPACE}"
 kubectl rollout status deployment/hubble-relay -n "${NAMESPACE}" --timeout=120s
+kubectl rollout restart deployment/hubble-ui -n "${NAMESPACE}"
+kubectl rollout status deployment/hubble-ui -n "${NAMESPACE}" --timeout=120s
 
 echo ""
 echo "🔒 Krypteringsstatus:"
