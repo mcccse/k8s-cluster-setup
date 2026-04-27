@@ -49,6 +49,7 @@ EOF
 
 ```bash
 hcloud server shutdown talos-image-builder
+```
 
 ```bash
 hcloud server create-image talos-image-builder \
