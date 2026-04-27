@@ -16,6 +16,8 @@ MACHINE_TYPE="${MACHINE_TYPE:-}"
 REPLICAS="${REPLICAS:-1}"
 TAINTED="${TAINTED:-false}"
 
+export CLUSTER_NAME KUBERNETES_VERSION TALOS_VERSION TALOS_IMAGE_NAME SSH_KEY_NAME NAMESPACE POOL MACHINE_TYPE REPLICAS TAINTED
+
 tmpl_general="$(dirname "$0")/workers-general.tmpl.yaml"
 tmpl_tainted="$(dirname "$0")/workers-tainted.tmpl.yaml"
 

@@ -43,11 +43,10 @@ spec:
       generateType: worker
       talosVersion: ${TALOS_VERSION}
       configPatches:
-        - |-
-          machine:
-            kubelet:
-              nodeLabels:
-                node-pool: ${POOL}
+        - op: add
+          path: /machine/kubelet/nodeLabels
+          value:
+            node-pool: ${POOL}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HCloudMachineTemplate
