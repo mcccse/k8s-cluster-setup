@@ -1,4 +1,4 @@
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: ${CLUSTER_NAME}-workers-${POOL}
@@ -24,11 +24,11 @@ spec:
       version: ${KUBERNETES_VERSION}
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: TalosConfigTemplate
           name: ${CLUSTER_NAME}-workers-${POOL}-tct
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: HCloudMachineTemplate
         name: ${CLUSTER_NAME}-workers-${POOL}-mt
 ---
@@ -42,12 +42,6 @@ spec:
     spec:
       generateType: worker
       talosVersion: ${TALOS_VERSION}
-      configPatches:
-        - |-
-          machine:
-            kubelet:
-              nodeLabels:
-                node-pool: ${POOL}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HCloudMachineTemplate
