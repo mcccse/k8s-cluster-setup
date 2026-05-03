@@ -1,0 +1,57 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-workers-${POOL}
+  namespace: ${NAMESPACE}
+  annotations:
+    cluster.x-k8s.io/cluster-api-autoscaler-enabled: "true"
+    cluster.x-k8s.io/cluster-api-autoscaler-min-size: "0"
+    cluster.x-k8s.io/cluster-api-autoscaler-max-size: "10"
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${REPLICAS}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+      node-pool: ${POOL}
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+        node-pool: ${POOL}
+    spec:
+      clusterName: ${CLUSTER_NAME}
+      version: ${KUBERNETES_VERSION}
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: TalosConfigTemplate
+          name: ${CLUSTER_NAME}-workers-${POOL}-tct
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: HCloudMachineTemplate
+        name: ${CLUSTER_NAME}-workers-${POOL}-mt
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+kind: TalosConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-workers-${POOL}-tct
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      generateType: worker
+      talosVersion: ${TALOS_VERSION}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: HCloudMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-workers-${POOL}-mt
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      type: ${MACHINE_TYPE}
+      imageName: ${TALOS_IMAGE_NAME}
+      sshKeys:
+        - name: ${SSH_KEY_NAME}
