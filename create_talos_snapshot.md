@@ -6,7 +6,7 @@ and review other options that can be enabled
 
 ```bash
 HCLOUD_LOCATION="hel1"
-TALOS_VERSION="v1.12.4"
+TALOS_VERSION="v1.12.7"
 SCHEMATIC_ID=$(curl -sX POST \
   https://factory.talos.dev/schematics \
   -H "Content-Type: application/yaml" \
@@ -36,15 +36,16 @@ hcloud server enable-rescue talos-image-builder --type linux64
 hcloud server reboot talos-image-builder
 ```
 
-You will need the passwd from previous step.
+You will need the root passwd from previous step.
+Manually enter the following commands:
 
 ```bash
-BUILDER_IP=$(hcloud server ip talos-image-builder) && \
-ssh -o StrictHostKeyChecking=no root@$BUILDER_IP <<EOF
+BUILDER_IP=$(hcloud server ip talos-image-builder)
+ssh -o StrictHostKeyChecking=no root@${BUILDER_IP}
+# Note: SCHEMATIC_ID, TALOS_VERSION as variables do not exist on the server, copy-paste
 curl -LO "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/hcloud-amd64.raw.xz"
 xz -d -c hcloud-amd64.raw.xz | dd of=/dev/sda bs=4M status=progress
 sync
-EOF
 ```
 
 ```bash
