@@ -24,6 +24,15 @@ Pattern: one MachineDeployment + TalosConfigTemplate + HCloudMachineTemplate per
 
 ## Create pools
 
+If you want to reuse the same talos-image,
+check MACHINE_TYPE on installed servers,
+`hcloud server describe <server-name>`
+
+Check available MACHINE_TYPE:
+`hcloud server-type list`
+
+Verify the location and cpu type.
+
 - General (no taints):
   - POOL=general MACHINE_TYPE=cpx31 REPLICAS=2 ./poolctl.sh apply
 - Compute (tainted):
