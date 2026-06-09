@@ -5,7 +5,7 @@ set -euo pipefail
 # ============================================================
 # Konfiguration — ändra dessa variabler
 # ============================================================
-CILIUM_VERSION="${CILIUM_VERSION:-1.18.3}"
+CILIUM_VERSION="${CILIUM_VERSION:-1.19.4}"
 NAMESPACE="${NAMESPACE:-cilium-system}"
 RELEASE="${RELEASE:-cilium}"
 GATEWAY_API_VERSION="${GATEWAY_API_VERSION:-1.2.1}"
