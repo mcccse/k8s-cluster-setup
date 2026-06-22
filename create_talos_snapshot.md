@@ -6,7 +6,7 @@ and review other options that can be enabled
 
 ```bash
 HCLOUD_LOCATION="hel1"
-TALOS_VERSION="v1.12.7"
+TALOS_VERSION="v1.13.5"
 SCHEMATIC_ID=$(curl -sX POST \
   https://factory.talos.dev/schematics \
   -H "Content-Type: application/yaml" \
@@ -15,6 +15,9 @@ customization:
   systemExtensions:
     officialExtensions:
       - siderolabs/qemu-guest-agent
+      - siderolabs/gvisor
+      - siderolabs/kata-containers
+      - siderolabs/wasmedge
 ' | jq -r '.id')
 ```
 
