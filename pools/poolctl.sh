@@ -64,7 +64,7 @@ scale)
 *)
   echo "Usage:"
   echo "  POOL=general MACHINE_TYPE=cpx31 REPLICAS=2 ./poolctl.sh apply"
-  echo "  POOL=compute MACHINE_TYPE=ccx32 REPLICAS=0 TAINTED=true ./poolctl.sh apply"
+  echo "  POOL=compute MACHINE_TYPE=ccx33 REPLICAS=0 TAINTED=true ./poolctl.sh apply"
   echo "  POOL=storage MACHINE_TYPE=cpx51 REPLICAS=0 TAINTED=true ./poolctl.sh apply"
   echo "  POOL=compute REPLICAS=3 ./poolctl.sh scale"
   echo "  POOL=compute ./poolctl.sh delete"
