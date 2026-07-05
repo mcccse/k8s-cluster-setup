@@ -78,9 +78,16 @@ read -r -p "Continue? (y/N) " confirm
 }
 
 # ============================================================
-# Skapa namespace
+# Steg 2: Skapa namespace med privileged pod security
 # ============================================================
+echo ""
+echo "📦 Skapar namespace ${NAMESPACE}..."
 kubectl create ns "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+kubectl label ns "${NAMESPACE}" \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged \
+  --overwrite
 
 # ============================================================
 # Skapa secret om token är satt explicit
